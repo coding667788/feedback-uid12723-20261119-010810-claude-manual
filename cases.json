@@ -1,0 +1,1629 @@
+{
+  "description": "Replayable, self-contained cases for the local member directory. Each case runs on its own fresh SQLite file under a virtual clock (start_at), so outcomes are deterministic. receipts.N is the receipt of ops[N]; assertions carry explicit expected values written from the task rules, never derived from the implementation.",
+  "format": 1,
+  "cases": [
+    {
+      "id": "01-invite-normalisation-and-generations",
+      "why": "The domain half of an address is ASCII-lowercased while the local part keeps its case, so two addresses that differ only in local-part case are separate bindings. Invite generations count per (tenant, email) binding.",
+      "start_at": "2026-01-01T00:00:00Z",
+      "ops": [
+        {
+          "id": 1,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-acme",
+            "name": "Acme"
+          }
+        },
+        {
+          "id": 2,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-beta"
+          }
+        },
+        {
+          "id": 3,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-beta",
+            "email": "O'Brien.Tag@Example.COM",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 4,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-beta",
+            "email": "o'brien.tag@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 5,
+          "op": "invite.issue",
+          "at": "2026-01-01T00:10:00Z",
+          "params": {
+            "tenant_id": "t-beta",
+            "email": "O'Brien.Tag@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 6,
+          "op": "invite.issue",
+          "at": "2026-01-01T00:20:00Z",
+          "params": {
+            "tenant_id": "t-acme",
+            "email": "O'Brien.Tag@example.com",
+            "ttl_ms": 60000
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "path": "receipts.2.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.2.data.email",
+          "equals": "O'Brien.Tag@example.com"
+        },
+        {
+          "path": "receipts.2.data.invite_epoch",
+          "equals": 1
+        },
+        {
+          "path": "receipts.2.data.expires_at",
+          "equals": "2026-01-01T01:00:00Z"
+        },
+        {
+          "path": "receipts.3.data.email",
+          "equals": "o'brien.tag@example.com"
+        },
+        {
+          "path": "receipts.3.data.invite_epoch",
+          "equals": 1
+        },
+        {
+          "path": "receipts.3.data.superseded_previous",
+          "equals": 0
+        },
+        {
+          "path": "receipts.4.data.invite_epoch",
+          "equals": 2
+        },
+        {
+          "path": "receipts.4.data.superseded_previous",
+          "equals": 1
+        },
+        {
+          "path": "receipts.5.data.invite_epoch",
+          "equals": 1
+        },
+        {
+          "path": "final_state.invites.0.tenant_id",
+          "equals": "t-acme"
+        },
+        {
+          "path": "final_state.invites.0.status",
+          "equals": "pending"
+        },
+        {
+          "path": "final_state.invites.1.status",
+          "equals": "superseded"
+        },
+        {
+          "path": "final_state.invites.2.status",
+          "equals": "pending"
+        },
+        {
+          "path": "final_state.invites.2.invite_epoch",
+          "equals": 2
+        },
+        {
+          "path": "final_state.invites.3.email",
+          "equals": "o'brien.tag@example.com"
+        },
+        {
+          "path": "final_state.invites.3.status",
+          "equals": "pending"
+        }
+      ]
+    },
+    {
+      "id": "02-exact-expiry-boundary",
+      "why": "An invitation is usable strictly before expires_at and expired at expires_at. Both checks happen at the same virtual millisecond.",
+      "start_at": "2026-01-01T00:00:00Z",
+      "ops": [
+        {
+          "id": 1,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-a"
+          }
+        },
+        {
+          "id": 2,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "edge@example.com",
+            "ttl_ms": 60000
+          }
+        },
+        {
+          "id": 3,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "just@example.com",
+            "ttl_ms": 60000
+          }
+        },
+        {
+          "id": 4,
+          "op": "invite.revoke",
+          "at": "2026-01-01T00:00:59.999Z",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "just@example.com",
+            "invite_epoch": 1
+          }
+        },
+        {
+          "id": 5,
+          "op": "invite.revoke",
+          "at": "2026-01-01T00:01:00.000Z",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "edge@example.com",
+            "invite_epoch": 1
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "path": "receipts.3.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.3.data.status",
+          "equals": "revoked"
+        },
+        {
+          "path": "receipts.4.ok",
+          "equals": false
+        },
+        {
+          "path": "receipts.4.error.code",
+          "equals": "INVITE_EXPIRED"
+        },
+        {
+          "path": "final_state.invites.0.status",
+          "equals": "expired"
+        },
+        {
+          "path": "final_state.invites.1.status",
+          "equals": "revoked"
+        },
+        {
+          "path": "final_state.now",
+          "equals": "2026-01-01T00:01:00Z"
+        }
+      ]
+    },
+    {
+      "id": "03-two-way-swap-despite-both-seats-occupied",
+      "why": "Both target seats are occupied when the batch starts: the same address is an active member in t-a and in t-b. Each move sends one of them to the other tenant, so each move's target is currently held by the other move's source. Occupancy is judged after every source has left, so the swap succeeds; a per-move check would wrongly refuse it.",
+      "start_at": "2026-01-01T00:00:00Z",
+      "ops": [
+        {
+          "id": 1,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-a"
+          }
+        },
+        {
+          "id": 2,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-b"
+          }
+        },
+        {
+          "id": 3,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "alice@example.com"
+          }
+        },
+        {
+          "id": 4,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "alice@example.com"
+          }
+        },
+        {
+          "id": 5,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "alice@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 6,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "alice@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 7,
+          "op": "migrate.commit",
+          "request_id": "swap-1",
+          "params": {
+            "request_tenant": "t-a",
+            "reason": "seat swap after reorg",
+            "moves": [
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "alice@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "alice@example.com",
+                  "invite_epoch": 1
+                }
+              },
+              {
+                "source": {
+                  "tenant_id": "t-b",
+                  "member_id": "alice@t-b.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-a",
+                  "email": "alice@example.com",
+                  "invite_epoch": 1
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "path": "receipts.6.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.6.committed",
+          "equals": true
+        },
+        {
+          "path": "receipts.6.data.moves.0.source.member_id",
+          "equals": "alice@t-a.m1"
+        },
+        {
+          "path": "receipts.6.data.moves.0.source.status",
+          "equals": "revoked"
+        },
+        {
+          "path": "receipts.6.data.moves.0.source.member_epoch",
+          "equals": 2
+        },
+        {
+          "path": "receipts.6.data.moves.0.target.member_id",
+          "equals": "alice@t-b.m2"
+        },
+        {
+          "path": "receipts.6.data.moves.0.target.email",
+          "equals": "alice@example.com"
+        },
+        {
+          "path": "receipts.6.data.moves.1.source.member_id",
+          "equals": "alice@t-b.m1"
+        },
+        {
+          "path": "receipts.6.data.moves.1.source.status",
+          "equals": "revoked"
+        },
+        {
+          "path": "receipts.6.data.moves.1.source.member_epoch",
+          "equals": 2
+        },
+        {
+          "path": "receipts.6.data.moves.1.target.member_id",
+          "equals": "alice@t-a.m2"
+        },
+        {
+          "path": "final_state.members",
+          "length": 4
+        },
+        {
+          "path": "final_state.members.0.member_id",
+          "equals": "alice@t-a.m1"
+        },
+        {
+          "path": "final_state.members.0.status",
+          "equals": "revoked"
+        },
+        {
+          "path": "final_state.members.0.member_epoch",
+          "equals": 2
+        },
+        {
+          "path": "final_state.members.1.member_id",
+          "equals": "alice@t-a.m2"
+        },
+        {
+          "path": "final_state.members.1.email",
+          "equals": "alice@example.com"
+        },
+        {
+          "path": "final_state.members.1.status",
+          "equals": "active"
+        },
+        {
+          "path": "final_state.members.1.invite_id",
+          "equals": 2
+        },
+        {
+          "path": "final_state.members.2.member_id",
+          "equals": "alice@t-b.m1"
+        },
+        {
+          "path": "final_state.members.2.status",
+          "equals": "revoked"
+        },
+        {
+          "path": "final_state.members.2.member_epoch",
+          "equals": 2
+        },
+        {
+          "path": "final_state.members.3.member_id",
+          "equals": "alice@t-b.m2"
+        },
+        {
+          "path": "final_state.members.3.email",
+          "equals": "alice@example.com"
+        },
+        {
+          "path": "final_state.members.3.status",
+          "equals": "active"
+        },
+        {
+          "path": "final_state.members.3.invite_id",
+          "equals": 1
+        },
+        {
+          "path": "final_state.invites.0.status",
+          "equals": "consumed"
+        },
+        {
+          "path": "final_state.invites.1.status",
+          "equals": "consumed"
+        }
+      ]
+    },
+    {
+      "id": "04-occupied-target-without-a-swap-fails-whole",
+      "why": "When no move in the batch vacates the target seat, the whole batch is refused and every business table is untouched; the invitation stays spendable for a later batch.",
+      "start_at": "2026-01-01T00:00:00Z",
+      "ops": [
+        {
+          "id": 1,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-a"
+          }
+        },
+        {
+          "id": 2,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-b"
+          }
+        },
+        {
+          "id": 3,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "carol@example.com"
+          }
+        },
+        {
+          "id": 4,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "carol@example.com"
+          }
+        },
+        {
+          "id": 5,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "carol@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 6,
+          "op": "migrate.commit",
+          "request_id": "blocked-1",
+          "params": {
+            "request_tenant": "t-a",
+            "moves": [
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "carol@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "carol@example.com",
+                  "invite_epoch": 1
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 7,
+          "op": "member.revoke",
+          "params": {
+            "tenant_id": "t-b",
+            "member_id": "carol@t-b.m1",
+            "member_epoch": 1,
+            "reason": "prior holder retired"
+          }
+        },
+        {
+          "id": 8,
+          "op": "migrate.commit",
+          "request_id": "retry-1",
+          "params": {
+            "request_tenant": "t-a",
+            "moves": [
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "carol@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "carol@example.com",
+                  "invite_epoch": 1
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "path": "receipts.5.ok",
+          "equals": false
+        },
+        {
+          "path": "receipts.5.committed",
+          "equals": false
+        },
+        {
+          "path": "receipts.5.error.code",
+          "equals": "TARGET_OCCUPIED"
+        },
+        {
+          "path": "receipts.5.error.details.occupant_member_id",
+          "equals": "carol@t-b.m1"
+        },
+        {
+          "path": "receipts.6.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.7.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.7.data.moves.0.target.member_id",
+          "equals": "carol@t-b.m2"
+        },
+        {
+          "path": "final_state.members.0.status",
+          "equals": "revoked"
+        },
+        {
+          "path": "final_state.members.1.status",
+          "equals": "revoked"
+        },
+        {
+          "path": "final_state.members.2.member_id",
+          "equals": "carol@t-b.m2"
+        },
+        {
+          "path": "final_state.members.2.status",
+          "equals": "active"
+        },
+        {
+          "path": "final_state.invites.0.status",
+          "equals": "consumed"
+        }
+      ]
+    },
+    {
+      "id": "05-duplicate-source-and-duplicate-target",
+      "why": "Naming the same source member twice, or the same target invitation twice, is a structural error: nothing is applied and both invitations remain pending.",
+      "start_at": "2026-01-01T00:00:00Z",
+      "ops": [
+        {
+          "id": 1,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-a"
+          }
+        },
+        {
+          "id": 2,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-b"
+          }
+        },
+        {
+          "id": 3,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "alice@example.com"
+          }
+        },
+        {
+          "id": 4,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "bob@example.com"
+          }
+        },
+        {
+          "id": 5,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "alice@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 6,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "another@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 7,
+          "op": "migrate.commit",
+          "request_id": "dup-src",
+          "params": {
+            "request_tenant": "t-a",
+            "moves": [
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "alice@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "alice@example.com",
+                  "invite_epoch": 1
+                }
+              },
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "alice@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "another@example.com",
+                  "invite_epoch": 1
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 8,
+          "op": "migrate.commit",
+          "request_id": "dup-tgt",
+          "params": {
+            "request_tenant": "t-a",
+            "moves": [
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "alice@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "another@example.com",
+                  "invite_epoch": 1
+                }
+              },
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "bob@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "another@example.com",
+                  "invite_epoch": 1
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 9,
+          "op": "member.leave",
+          "params": {
+            "tenant_id": "t-a",
+            "member_id": "bob@t-a.m1",
+            "member_epoch": 1
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "path": "receipts.6.error.code",
+          "equals": "DUPLICATE_SOURCE"
+        },
+        {
+          "path": "receipts.6.error.details.first_index",
+          "equals": 0
+        },
+        {
+          "path": "receipts.6.error.details.again_index",
+          "equals": 1
+        },
+        {
+          "path": "receipts.7.error.code",
+          "equals": "DUPLICATE_TARGET"
+        },
+        {
+          "path": "receipts.7.error.details.first_index",
+          "equals": 0
+        },
+        {
+          "path": "receipts.7.error.details.again_index",
+          "equals": 1
+        },
+        {
+          "path": "final_state.members.0.status",
+          "equals": "active"
+        },
+        {
+          "path": "final_state.members.1.status",
+          "equals": "revoked"
+        },
+        {
+          "path": "final_state.invites.0.status",
+          "equals": "pending"
+        },
+        {
+          "path": "final_state.invites.1.status",
+          "equals": "pending"
+        },
+        {
+          "path": "final_state.audits",
+          "length": 9
+        }
+      ]
+    },
+    {
+      "id": "06-request-id-idempotency",
+      "why": "A request id is unique inside a tenant: same id and same params replays the stored first receipt, including its original timestamp; same id with different params is refused without writing. The same id in another tenant is independent.",
+      "start_at": "2026-01-01T00:00:00Z",
+      "ops": [
+        {
+          "id": 1,
+          "op": "tenant.create",
+          "request_id": "r-tenant",
+          "params": {
+            "tenant_id": "t-a"
+          }
+        },
+        {
+          "id": 2,
+          "op": "tenant.create",
+          "request_id": "r-tenant-b",
+          "params": {
+            "tenant_id": "t-b"
+          }
+        },
+        {
+          "id": 3,
+          "op": "tenant.create",
+          "request_id": "r-tenant",
+          "params": {
+            "tenant_id": "t-a",
+            "name": "Acme"
+          }
+        },
+        {
+          "id": 4,
+          "op": "member.add",
+          "request_id": "r-add",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "dana@example.com"
+          }
+        },
+        {
+          "id": 5,
+          "op": "member.add",
+          "request_id": "r-add",
+          "at": "2026-01-01T05:00:00Z",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "dana@example.com"
+          }
+        },
+        {
+          "id": 6,
+          "op": "member.leave",
+          "request_id": "r-leave",
+          "params": {
+            "tenant_id": "t-a",
+            "member_id": "dana@t-a.m1",
+            "member_epoch": 1
+          }
+        },
+        {
+          "id": 7,
+          "op": "member.leave",
+          "request_id": "r-leave",
+          "at": "2026-01-01T06:00:00Z",
+          "params": {
+            "tenant_id": "t-a",
+            "member_id": "dana@t-a.m1",
+            "member_epoch": 1
+          }
+        },
+        {
+          "id": 8,
+          "op": "member.leave",
+          "request_id": "r-leave-stale",
+          "params": {
+            "tenant_id": "t-a",
+            "member_id": "dana@t-a.m1",
+            "member_epoch": 2
+          }
+        },
+        {
+          "id": 9,
+          "op": "member.add",
+          "request_id": "r-other-tenant",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "dana@example.com"
+          }
+        },
+        {
+          "id": 10,
+          "op": "member.add",
+          "request_id": "r-add",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "eve@example.com"
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "path": "receipts.2.error.code",
+          "equals": "REQUEST_ID_CONFLICT"
+        },
+        {
+          "path": "receipts.3.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.3.data.email",
+          "equals": "dana@example.com"
+        },
+        {
+          "path": "receipts.3.data.member_id",
+          "equals": "dana@t-a.m1"
+        },
+        {
+          "path": "receipts.3.at",
+          "equals": "2026-01-01T00:00:00Z"
+        },
+        {
+          "path": "receipts.4.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.4.data",
+          "equals": {
+            "tenant_id": "t-a",
+            "member_id": "dana@t-a.m1",
+            "email": "dana@example.com",
+            "member_epoch": 1,
+            "status": "active"
+          }
+        },
+        {
+          "path": "receipts.4.at",
+          "equals": "2026-01-01T00:00:00Z"
+        },
+        {
+          "path": "receipts.5.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.5.at",
+          "equals": "2026-01-01T05:00:00Z"
+        },
+        {
+          "path": "receipts.6.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.6.at",
+          "equals": "2026-01-01T05:00:00Z"
+        },
+        {
+          "path": "receipts.7.ok",
+          "equals": false
+        },
+        {
+          "path": "receipts.7.error.code",
+          "equals": "MEMBER_NOT_ACTIVE"
+        },
+        {
+          "path": "receipts.8.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.8.data.tenant_id",
+          "equals": "t-b"
+        },
+        {
+          "path": "receipts.9.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.9.data.member_id",
+          "equals": "eve@t-b.m1"
+        },
+        {
+          "path": "final_state.members",
+          "length": 3
+        },
+        {
+          "path": "final_state.members.0.member_epoch",
+          "equals": 2
+        },
+        {
+          "path": "final_state.requests",
+          "length": 7
+        }
+      ]
+    },
+    {
+      "id": "07-failed-invite-is-reusable-by-another-batch",
+      "why": "A failed batch must not burn the invitations it referenced. The same invitation still works in a later, valid batch.",
+      "start_at": "2026-01-01T00:00:00Z",
+      "ops": [
+        {
+          "id": 1,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-a"
+          }
+        },
+        {
+          "id": 2,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-b"
+          }
+        },
+        {
+          "id": 3,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "eve@example.com"
+          }
+        },
+        {
+          "id": 4,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "frank@example.com"
+          }
+        },
+        {
+          "id": 5,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "eve@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 6,
+          "op": "migrate.commit",
+          "request_id": "doomed",
+          "params": {
+            "request_tenant": "t-a",
+            "moves": [
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "eve@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "eve@example.com",
+                  "invite_epoch": 1
+                }
+              },
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "frank@t-a.m1",
+                  "member_epoch": 9
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "frank@example.com",
+                  "invite_epoch": 1
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 7,
+          "op": "migrate.commit",
+          "request_id": "usable",
+          "params": {
+            "request_tenant": "t-a",
+            "moves": [
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "eve@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "eve@example.com",
+                  "invite_epoch": 1
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "path": "receipts.5.ok",
+          "equals": false
+        },
+        {
+          "path": "receipts.5.error.code",
+          "equals": "MEMBER_EPOCH_MISMATCH"
+        },
+        {
+          "path": "receipts.5.error.details.move_index",
+          "equals": 1
+        },
+        {
+          "path": "receipts.5.error.details.expected",
+          "equals": 1
+        },
+        {
+          "path": "receipts.6.ok",
+          "equals": true
+        },
+        {
+          "path": "final_state.invites.0.status",
+          "equals": "consumed"
+        },
+        {
+          "path": "final_state.members.0.status",
+          "equals": "revoked"
+        },
+        {
+          "path": "final_state.members.1.status",
+          "equals": "active"
+        },
+        {
+          "path": "final_state.members.2.tenant_id",
+          "equals": "t-b"
+        },
+        {
+          "path": "final_state.members.2.email",
+          "equals": "eve@example.com"
+        }
+      ]
+    },
+    {
+      "id": "08-departure-then-arrival-reuses-the-seat",
+      "why": "Departure bumps the member generation; a stale epoch cannot leave twice. The freed seat can then be claimed through an invitation.",
+      "start_at": "2026-01-01T00:00:00Z",
+      "ops": [
+        {
+          "id": 1,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-a"
+          }
+        },
+        {
+          "id": 2,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-b"
+          }
+        },
+        {
+          "id": 3,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "gina@example.com"
+          }
+        },
+        {
+          "id": 4,
+          "op": "member.leave",
+          "params": {
+            "tenant_id": "t-b",
+            "member_id": "gina@t-b.m1",
+            "member_epoch": 1,
+            "reason": "contract ended"
+          }
+        },
+        {
+          "id": 5,
+          "op": "member.leave",
+          "params": {
+            "tenant_id": "t-b",
+            "member_id": "gina@t-b.m1",
+            "member_epoch": 1
+          }
+        },
+        {
+          "id": 6,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "gina@example.com"
+          }
+        },
+        {
+          "id": 7,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "gina@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 8,
+          "op": "migrate.commit",
+          "request_id": "return",
+          "params": {
+            "request_tenant": "t-a",
+            "reason": "returning contractor",
+            "moves": [
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "gina@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "gina@example.com",
+                  "invite_epoch": 1
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "path": "receipts.3.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.3.data.member_epoch",
+          "equals": 2
+        },
+        {
+          "path": "receipts.3.data.status",
+          "equals": "revoked"
+        },
+        {
+          "path": "receipts.4.error.code",
+          "equals": "MEMBER_NOT_ACTIVE"
+        },
+        {
+          "path": "receipts.7.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.7.data.moves.0.target.member_id",
+          "equals": "gina@t-b.m2"
+        },
+        {
+          "path": "final_state.members.2.member_id",
+          "equals": "gina@t-b.m2"
+        },
+        {
+          "path": "final_state.members.2.status",
+          "equals": "active"
+        },
+        {
+          "path": "final_state.audits.3.action",
+          "equals": "member.left"
+        },
+        {
+          "path": "final_state.audits.3.reason",
+          "equals": "contract ended"
+        },
+        {
+          "path": "final_state.audits.4.action",
+          "equals": "member.leave.rejected"
+        }
+      ]
+    },
+    {
+      "id": "09-invalid-email-and-missing-tenants",
+      "why": "Non-ASCII addresses cannot satisfy the ASCII-lowercase rule, malformed addresses and non-positive TTLs are refused before anything is written, and an unknown tenant is refused without creating members.",
+      "start_at": "2026-01-01T00:00:00Z",
+      "ops": [
+        {
+          "id": 1,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-a"
+          }
+        },
+        {
+          "id": 2,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "müller@example.com",
+            "ttl_ms": 1000
+          }
+        },
+        {
+          "id": 3,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "no-at-sign"
+          }
+        },
+        {
+          "id": 4,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "ok@example.com",
+            "ttl_ms": 0
+          }
+        },
+        {
+          "id": 5,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-a"
+          }
+        },
+        {
+          "id": 6,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-missing",
+            "email": "x@example.com"
+          }
+        },
+        {
+          "id": 7,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "ok@example.com",
+            "ttl_ms": 1000
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "path": "receipts.1.error.code",
+          "equals": "INVALID_EMAIL"
+        },
+        {
+          "path": "receipts.2.error.code",
+          "equals": "INVALID_EMAIL"
+        },
+        {
+          "path": "receipts.3.error.code",
+          "equals": "INVALID_REQUEST"
+        },
+        {
+          "path": "receipts.4.error.code",
+          "equals": "TENANT_EXISTS"
+        },
+        {
+          "path": "receipts.5.error.code",
+          "equals": "TENANT_NOT_FOUND"
+        },
+        {
+          "path": "receipts.6.ok",
+          "equals": true
+        },
+        {
+          "path": "final_state.invites",
+          "length": 1
+        },
+        {
+          "path": "final_state.members",
+          "length": 0
+        }
+      ]
+    },
+    {
+      "id": "10-three-way-rotation",
+      "why": "A cycle A->B->C->A is evaluated as one unit: three sources leave, three seats open, three arrivals land, and every audit row carries the batch reason.",
+      "start_at": "2026-01-01T00:00:00Z",
+      "ops": [
+        {
+          "id": 1,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-a"
+          }
+        },
+        {
+          "id": 2,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-b"
+          }
+        },
+        {
+          "id": 3,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-c"
+          }
+        },
+        {
+          "id": 4,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "p@example.com"
+          }
+        },
+        {
+          "id": 5,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "q@example.com"
+          }
+        },
+        {
+          "id": 6,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-c",
+            "email": "r@example.com"
+          }
+        },
+        {
+          "id": 7,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "p@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 8,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-c",
+            "email": "q@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 9,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "r@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 10,
+          "op": "migrate.commit",
+          "request_id": "rotation",
+          "params": {
+            "request_tenant": "t-a",
+            "reason": "quarterly rotation",
+            "moves": [
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "p@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "p@example.com",
+                  "invite_epoch": 1
+                }
+              },
+              {
+                "source": {
+                  "tenant_id": "t-b",
+                  "member_id": "q@t-b.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-c",
+                  "email": "q@example.com",
+                  "invite_epoch": 1
+                }
+              },
+              {
+                "source": {
+                  "tenant_id": "t-c",
+                  "member_id": "r@t-c.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-a",
+                  "email": "r@example.com",
+                  "invite_epoch": 1
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "path": "receipts.9.ok",
+          "equals": true
+        },
+        {
+          "path": "receipts.9.data.moves",
+          "length": 3
+        },
+        {
+          "path": "final_state.members",
+          "length": 6
+        },
+        {
+          "path": "final_state.invites.0.status",
+          "equals": "consumed"
+        },
+        {
+          "path": "final_state.invites.1.status",
+          "equals": "consumed"
+        },
+        {
+          "path": "final_state.invites.2.status",
+          "equals": "consumed"
+        },
+        {
+          "path": "final_state.audits.9.reason",
+          "equals": "quarterly rotation"
+        },
+        {
+          "path": "final_state.audits.18.action",
+          "equals": "migration.committed"
+        }
+      ]
+    },
+    {
+      "id": "11-one-bad-seat-fails-a-mixed-batch",
+      "why": "All-or-nothing holds for mixed batches: one occupied target aborts the other move too, leaving its invitation unspent and its source member untouched.",
+      "start_at": "2026-01-01T00:00:00Z",
+      "ops": [
+        {
+          "id": 1,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-a"
+          }
+        },
+        {
+          "id": 2,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-b"
+          }
+        },
+        {
+          "id": 3,
+          "op": "tenant.create",
+          "params": {
+            "tenant_id": "t-c"
+          }
+        },
+        {
+          "id": 4,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "alice@example.com"
+          }
+        },
+        {
+          "id": 5,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-a",
+            "email": "bob@example.com"
+          }
+        },
+        {
+          "id": 6,
+          "op": "member.add",
+          "params": {
+            "tenant_id": "t-c",
+            "email": "bob@example.com"
+          }
+        },
+        {
+          "id": 7,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "alice@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 8,
+          "op": "invite.issue",
+          "params": {
+            "tenant_id": "t-c",
+            "email": "bob@example.com",
+            "ttl_ms": 3600000
+          }
+        },
+        {
+          "id": 9,
+          "op": "migrate.commit",
+          "request_id": "mixed-1",
+          "params": {
+            "request_tenant": "t-a",
+            "moves": [
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "alice@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-b",
+                  "email": "alice@example.com",
+                  "invite_epoch": 1
+                }
+              },
+              {
+                "source": {
+                  "tenant_id": "t-a",
+                  "member_id": "bob@t-a.m1",
+                  "member_epoch": 1
+                },
+                "target": {
+                  "tenant_id": "t-c",
+                  "email": "bob@example.com",
+                  "invite_epoch": 1
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 10,
+          "op": "invite.revoke",
+          "params": {
+            "tenant_id": "t-b",
+            "email": "alice@example.com",
+            "invite_epoch": 1
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "path": "receipts.8.ok",
+          "equals": false
+        },
+        {
+          "path": "receipts.8.error.code",
+          "equals": "TARGET_OCCUPIED"
+        },
+        {
+          "path": "receipts.8.error.details.email",
+          "equals": "bob@example.com"
+        },
+        {
+          "path": "receipts.9.ok",
+          "equals": true
+        },
+        {
+          "path": "final_state.members.0.status",
+          "equals": "active"
+        },
+        {
+          "path": "final_state.members.1.status",
+          "equals": "active"
+        },
+        {
+          "path": "final_state.members.2.status",
+          "equals": "active"
+        },
+        {
+          "path": "final_state.invites.0.status",
+          "equals": "revoked"
+        },
+        {
+          "path": "final_state.invites.1.status",
+          "equals": "pending"
+        }
+      ]
+    }
+  ]
+}
